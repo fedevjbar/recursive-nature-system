@@ -1,4 +1,4 @@
-# recursive-nature-system
+# Recursive nature system
 Computational model showing emergent dynamics and generative principles
 Recursive Nature System
 A computational model demonstrating emergent dynamics through catastrophic transitions and recursive generation processes.
