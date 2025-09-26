@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recursive Nature System - Pure Implementation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Courier New', monospace;
+            background: #000;
+            color: #fff;
+            overflow: hidden;
+            height: 100vh;
+        }
+        
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+        }
+        
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        
+        .controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+            pointer-events: auto;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            background: #000;
+            color: #fff;
+            border: 1px solid #fff;
+            font-family: 'Courier New', monospace;
+            cursor: pointer;
+            text-transform: uppercase;
+        }
+        
+        .btn:hover {
+            background: #fff;
+            color: #000;
+        }
+        
+        .stats {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            font-size: 12px;
+            line-height: 1.6;
+            background: rgba(0,0,0,0.8);
+            padding: 15px;
+            border-radius: 5px;
+            pointer-events: auto;
+        }
+        
+        .phase-indicator {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px #000;
+        }
+        
+        .log {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            height: 120px;
+            font-size: 10px;
+            line-height: 1.4;
+            overflow-y: auto;
+            background: rgba(0,0,0,0.8);
+            padding: 10px;
+            border-radius: 5px;
+            pointer-events: auto;
+        }
+
+        .config {
+            position: absolute;
+            top: 20px;
+            right: 220px;
+            background: rgba(0,0,0,0.8);
+            padding: 10px;
+            border-radius: 5px;
+            pointer-events: auto;
+            font-size: 11px;
+        }
+
+        .config input {
+            width: 60px;
+            padding: 2px;
+            margin-left: 5px;
+            background: #333;
+            color: #fff;
+            border: 1px solid #666;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    
+    <div class="overlay">
+        <div class="phase-indicator" id="phaseIndicator">INITIALIZATION</div>
+        
+        <div class="stats">
+            <div>PHASE: <span id="phase">1</span></div>
+            <div>V (LIMIT): <span id="vValue">--</span></div>
+            <div>δ (DELTA): <span id="deltaValue">--</span></div>
+            <div>TOTAL SUM: <span id="totalSum">0</span></div>
+            <div>GENERATORS: <span id="generatorCount">0</span></div>
+            <div>MAX DEPTH: <span id="maxDepth">0</span></div>
+            <div>OPERATIONS: <span id="operations">0</span></div>
+            <div>RUNTIME: <span id="runtime">00:00</span></div>
+            <div>ZOOM: <span id="zoomLevel">100</span>%</div>
+        </div>
+
+        <div class="config">
+            <div>VALUE RANGE: ±<input type="number" id="valueRange" value="100" min="1" max="1000"></div>
+            <div>BASE TIME (ms): <input type="number" id="baseTime" value="2000" min="100" max="10000"></div>
+            <div>TIME MODULATION: <input type="checkbox" id="timeModulation" checked></div>
+            <div>VISUAL DECAY: <input type="number" id="visualDecay" value="0.68" min="0.1" max="0.9" step="0.01"></div>
+        </div>
+        
+        <div class="controls">
+            <button class="btn" id="startBtn">START</button>
+            <button class="btn" id="stopBtn">PAUSE</button>
+            <button class="btn" id="resetBtn">RESET</button>
+            <button class="btn" id="exportBtn">EXPORT DATA</button>
+        </div>
+        
+        <div class="log" id="logContent"></div>
+    </div>
+
+    <script>
+        /**
+         * RECURSIVE NATURE SYSTEM - PURE IMPLEMENTATION
+         * 
+         * This implementation follows the theoretical model without artificial constraints.
+         * Phase 1: Stochastic exploration until sign change
+         * Phase 2: Recursive constrained dynamics
+         * Termination: When total sum exactly equals ±v
+         */
+
+        class RecursiveNatureSystem {
+            constructor() {
+                // Phase tracking
+                this.phase = 1;
+                this.running = false;
+                this.startTime = 0;
+                
+                // Phase 1 variables
+                this.phase1Values = [];
+                this.phase1Sum = 0;
+                this.v = 0;  // Universal limit (emerges from Phase 1)
+                this.delta = 0;  // Initial imbalance (emerges from Phase 1)
+                
+                // Phase 2 variables  
+                this.generators = new Map();
+                this.totalSum = 0;
+                this.generatorCounter = 0;
+                this.maxDepth = 0;
+                this.operations = 0;
+                
+                // Visualization
+                this.canvas = document.getElementById('canvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.resizeCanvas();
+                window.addEventListener('resize', () => this.resizeCanvas());
+                
+                // Dynamic zoom system
+                this.currentZoom = 1.0;
+                this.baseLength = 600;
+                
+                // Configuration
+                this.config = {
+                    valueRange: 100,
+                    baseTime: 2000,
+                    timeModulation: true,
+                    visualDecay: 0.68
+                };
+                
+                // Data collection for research
+                this.sessionData = {
+                    phase1Duration: 0,
+                    phase2Duration: 0,
+                    totalOperations: 0,
+                    maxDepthReached: 0,
+                    finalConfiguration: null,
+                    convergenceData: []
+                };
+
+                this.bindControls();
+            }
+
+            resizeCanvas() {
+                this.canvas.width = window.innerWidth;
+                this.canvas.height = window.innerHeight;
+                this.centerX = this.canvas.width / 2;
+                this.centerY = this.canvas.height * 0.85;
+            }
+
+            bindControls() {
+                document.getElementById('startBtn').onclick = () => this.start();
+                document.getElementById('stopBtn').onclick = () => this.stop();
+                document.getElementById('resetBtn').onclick = () => this.reset();
+                document.getElementById('exportBtn').onclick = () => this.exportData();
+
+                // Configuration controls
+                document.getElementById('valueRange').onchange = (e) => {
+                    this.config.valueRange = parseFloat(e.target.value);
+                };
+                document.getElementById('baseTime').onchange = (e) => {
+                    this.config.baseTime = parseFloat(e.target.value);
+                };
+                document.getElementById('timeModulation').onchange = (e) => {
+                    this.config.timeModulation = e.target.checked;
+                };
+                document.getElementById('visualDecay').onchange = (e) => {
+                    this.config.visualDecay = parseFloat(e.target.value);
+                };
+            }
+
+            start() {
+                this.running = true;
+                this.startTime = Date.now();
+                this.log("System initialized - Beginning Phase 1");
+                this.mainLoop();
+                this.startVisualization();
+            }
+
+            stop() {
+                this.running = false;
+                this.log("System paused");
+            }
+
+            reset() {
+                this.running = false;
+                
+                // Reset all state
+                this.phase = 1;
+                this.phase1Values = [];
+                this.phase1Sum = 0;
+                this.v = 0;
+                this.delta = 0;
+                this.generators.clear();
+                this.totalSum = 0;
+                this.generatorCounter = 0;
+                this.maxDepth = 0;
+                this.operations = 0;
+                
+                // Clear visualization
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                // Reset UI
+                this.updateUI();
+                document.getElementById('logContent').innerHTML = '';
+                
+                this.log("System reset - Ready for new initialization");
+            }
+
+            /**
+             * PHASE 1: STOCHASTIC EXPLORATION
+             * Generates random values until sign change occurs
+             * This phase discovers the fundamental parameters v and δ
+             */
+            executePhase1() {
+                const range = this.config.valueRange;
+                const newValue = (Math.random() - 0.5) * 2 * range;
+                
+                // Check for sign change (catastrophic transition)
+                const signChange = this.phase1Values.length > 0 && 
+                    Math.sign(newValue) !== Math.sign(this.phase1Values[this.phase1Values.length - 1]);
+                
+                this.phase1Values.push(newValue);
+                this.phase1Sum += newValue;
+                this.operations++;
+                
+                if (signChange) {
+                    // CATASTROPHIC TRANSITION: Fix universal parameters
+                    this.v = this.phase1Values.reduce((sum, val) => sum + Math.abs(val), 0);
+                    this.delta = this.phase1Sum;
+                    
+                    this.log(`CATASTROPHIC TRANSITION at operation ${this.operations}`);
+                    this.log(`Sign change detected: ${this.phase1Values[this.phase1Values.length-2].toFixed(3)} → ${newValue.toFixed(3)}`);
+                    this.log(`Universal limit V = ${this.v.toFixed(3)}`);
+                    this.log(`Initial imbalance δ = ${this.delta.toFixed(3)}`);
+                    
+                    // Calculate emergent time quantum based on transition "hardness"
+                    const resistance = this.phase1Values.length;
+                    const intensity = Math.abs(newValue - this.phase1Values[this.phase1Values.length-2]);
+                    const imbalanceRatio = Math.abs(this.delta) / this.v;
+                    
+                    this.emergentTimeQuantum = resistance * Math.sqrt(this.v / Math.max(1, intensity * imbalanceRatio)) * 100;
+                    this.emergentTimeQuantum = Math.max(200, Math.min(20000, this.emergentTimeQuantum));
+                    
+                    this.log(`Emergent time quantum: ${this.emergentTimeQuantum.toFixed(0)}ms`);
+                    
+                    // Transition to Phase 2
+                    this.phase = 2;
+                    this.phase1Sum = 0; // Reset for Phase 2
+                    this.phase1Values = []; // Clear for Phase 2
+                    
+                    // Create primordial generator with value = delta
+                    this.createPrimordialGenerator();
+                    
+                    this.sessionData.phase1Duration = Date.now() - this.startTime;
+                    this.log("=== ENTERING PHASE 2: RECURSIVE DYNAMICS ===");
+                } else {
+                    // Continue Phase 1
+                    if (this.phase1Values.length % 10 === 1) {
+                        this.log(`Phase 1 [${this.phase1Values.length}]: Generated ${newValue.toFixed(3)}, Sum: ${this.phase1Sum.toFixed(3)}`);
+                    }
+                }
+            }
+
+            /**
+             * Creates the primordial generator with special properties
+             */
+            createPrimordialGenerator() {
+                this.generatorCounter++;
+                const primordial = new Generator(
+                    `A${this.generatorCounter}`,
+                    this.delta,  // Value = delta from Phase 1
+                    this.v,      // Max value = universal limit (special case)
+                    0,           // Depth = 0 (root level)
+                    this.centerX,
+                    this.centerY,
+                    -90,         // Angle = vertical upward
+                    true         // isPrimordial flag
+                );
+                
+                primordial.calculateGenerationTime(this.emergentTimeQuantum, this.config);
+                this.generators.set(primordial.name, primordial);
+                
+                this.log(`PRIMORDIAL GENERATOR ${primordial.name} created:`);
+                this.log(`  Value: ${this.delta.toFixed(3)}`);
+                this.log(`  Limit: ±${this.v.toFixed(3)} (universal)`);
+                this.log(`  Generation interval: ${primordial.generationTime.toFixed(0)}ms`);
+            }
+
+            /**
+             * PHASE 2: RECURSIVE CONSTRAINED DYNAMICS
+             * Each generator creates sub-generators following the same logic
+             */
+            executePhase2() {
+                // Update all generators
+                const generatorsArray = Array.from(this.generators.values());
+                for (const generator of generatorsArray) {
+                    if (generator.isActive) {
+                        generator.update(this);
+                    }
+                }
+
+                // Calculate total system sum
+                this.calculateTotalSum();
+
+                // Check for exact equilibrium (termination condition)
+                this.checkEquilibriumCondition();
+            }
+
+            calculateTotalSum() {
+                this.totalSum = 0;
+                for (const generator of this.generators.values()) {
+                    this.totalSum += generator.getTotalValue();
+                }
+            }
+
+            /**
+             * Check if system has reached exact equilibrium ±v
+             * This is the only termination condition in the pure model
+             */
+            checkEquilibriumCondition() {
+                const epsilon = 1e-10; // Machine precision only
+                
+                if (Math.abs(Math.abs(this.totalSum) - this.v) < epsilon) {
+                    this.running = false;
+                    
+                    this.log("=================================");
+                    this.log("🎯 EXACT EQUILIBRIUM ACHIEVED!");
+                    this.log(`Total sum: ${this.totalSum.toFixed(10)}`);
+                    this.log(`Target: ±${this.v.toFixed(10)}`);
+                    this.log(`Difference: ${Math.abs(Math.abs(this.totalSum) - this.v).toExponential(3)}`);
+                    this.log(`Total operations: ${this.operations}`);
+                    this.log(`Max depth reached: ${this.maxDepth}`);
+                    this.log(`Active generators: ${Array.from(this.generators.values()).filter(g => g.isActive).length}`);
+                    this.log("=================================");
+                    
+                    this.sessionData.phase2Duration = Date.now() - this.startTime - this.sessionData.phase1Duration;
+                    this.sessionData.totalOperations = this.operations;
+                    this.sessionData.maxDepthReached = this.maxDepth;
+                    this.sessionData.finalConfiguration = this.captureSystemState();
+                    
+                    return true;
+                }
+                
+                return false;
+            }
+
+            /**
+             * Main execution loop
+             */
+            mainLoop() {
+                if (!this.running) return;
+
+                if (this.phase === 1) {
+                    // Phase 1: Fast execution until transition
+                    for (let i = 0; i < 100 && this.phase === 1 && this.running; i++) {
+                        this.executePhase1();
+                    }
+                } else {
+                    // Phase 2: Controlled execution
+                    this.executePhase2();
+                }
+
+                // Continue loop
+                if (this.running) {
+                    requestAnimationFrame(() => this.mainLoop());
+                }
+            }
+
+            /**
+             * Visualization system with dynamic zoom
+             */
+            startVisualization() {
+                const animate = () => {
+                    if (this.phase === 2) {
+                        this.calculateOptimalZoom();
+                        this.drawSystem();
+                    }
+                    
+                    this.updateUI();
+                    
+                    if (this.running) {
+                        requestAnimationFrame(animate);
+                    }
+                };
+                
+                requestAnimationFrame(animate);
+            }
+
+            calculateOptimalZoom() {
+                if (this.v === 0) return;
+
+                // Find maximum branch length
+                let maxLength = 0;
+                for (const generator of this.generators.values()) {
+                    const lengthRatio = Math.abs(generator.value) / this.v;
+                    const length = 600 * lengthRatio;
+                    maxLength = Math.max(maxLength, length);
+                }
+
+                if (maxLength > 0) {
+                    const screenSize = Math.min(this.canvas.width, this.canvas.height);
+                    const targetSize = screenSize * 0.4;
+                    this.currentZoom = targetSize / maxLength;
+                    this.currentZoom = Math.max(0.1, Math.min(5.0, this.currentZoom));
+                    this.baseLength = 600 * this.currentZoom;
+                }
+            }
+
+            drawSystem() {
+                // Clear canvas
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+                // Draw generators
+                for (const generator of this.generators.values()) {
+                    if (generator.isActive) {
+                        // Primordial generator marker
+                        if (generator.isPrimordial) {
+                            this.ctx.strokeStyle = '#ffffff';
+                            this.ctx.lineWidth = 2;
+                            this.ctx.beginPath();
+                            this.ctx.arc(generator.x, generator.y, 3, 0, Math.PI * 2);
+                            this.ctx.stroke();
+                        }
+                        
+                        this.drawBranch(generator, 0);
+                    }
+                }
+            }
+
+            drawBranch(generator, depth) {
+                if (!generator.isActive) return;
+
+                const lengthRatio = Math.abs(generator.value) / this.v;
+                const baseLength = this.baseLength * Math.min(2.0, lengthRatio);
+                const actualLength = baseLength * Math.pow(this.config.visualDecay, depth);
+
+                if (actualLength < 1) return;
+
+                const rad = generator.angle * Math.PI / 180;
+                const endX = generator.x + Math.cos(rad) * actualLength;
+                const endY = generator.y + Math.sin(rad) * actualLength;
+
+                // Draw branch with depth-based styling
+                const alpha = Math.max(0.2, 1 - depth * 0.08);
+                this.ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
+                this.ctx.lineWidth = Math.max(0.1, 1.5 - depth * 0.1);
+
+                this.ctx.beginPath();
+                this.ctx.moveTo(generator.x, generator.y);
+                this.ctx.lineTo(endX, endY);
+                this.ctx.stroke();
+
+                // Draw sub-generators recursively
+                for (const subGen of generator.subGenerators.values()) {
+                    if (subGen.isActive) {
+                        // Update sub-generator position
+                        subGen.x = endX;
+                        subGen.y = endY;
+                        this.drawBranch(subGen, depth + 1);
+                    }
+                }
+            }
+
+            updateUI() {
+                document.getElementById('phase').textContent = this.phase;
+                document.getElementById('phaseIndicator').textContent = 
+                    this.phase === 1 ? 'PHASE 1 - EXPLORATION' : 'PHASE 2 - RECURSIVE DYNAMICS';
+                document.getElementById('vValue').textContent = this.v ? this.v.toFixed(3) : '--';
+                document.getElementById('deltaValue').textContent = this.delta ? this.delta.toFixed(3) : '--';
+                document.getElementById('totalSum').textContent = this.totalSum.toFixed(6);
+                document.getElementById('generatorCount').textContent = this.generators.size;
+                document.getElementById('maxDepth').textContent = this.maxDepth;
+                document.getElementById('operations').textContent = this.operations;
+                document.getElementById('zoomLevel').textContent = Math.round(this.currentZoom * 100);
+
+                // Runtime
+                if (this.startTime > 0) {
+                    const elapsed = Math.floor((Date.now() - this.startTime) / 1000);
+                    const minutes = Math.floor(elapsed / 60);
+                    const seconds = elapsed % 60;
+                    document.getElementById('runtime').textContent = 
+                        `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                }
+            }
+
+            log(message) {
+                const logContent = document.getElementById('logContent');
+                const entry = document.createElement('div');
+                const time = new Date().toLocaleTimeString();
+                entry.textContent = `[${time}] ${message}`;
+                logContent.appendChild(entry);
+                logContent.scrollTop = logContent.scrollHeight;
+
+                // Keep reasonable log size
+                while (logContent.children.length > 100) {
+                    logContent.removeChild(logContent.firstChild);
+                }
+            }
+
+            captureSystemState() {
+                const state = {
+                    phase: this.phase,
+                    v: this.v,
+                    delta: this.delta,
+                    totalSum: this.totalSum,
+                    generatorCount: this.generators.size,
+                    maxDepth: this.maxDepth,
+                    activeGenerators: Array.from(this.generators.values()).filter(g => g.isActive).length,
+                    timestamp: new Date().toISOString()
+                };
+
+                // Capture generator tree structure
+                state.generatorTree = {};
+                for (const [name, generator] of this.generators) {
+                    if (generator.isActive) {
+                        state.generatorTree[name] = {
+                            value: generator.value,
+                            internalSum: generator.internalSum,
+                            depth: generator.depth,
+                            subGeneratorCount: generator.subGenerators.size
+                        };
+                    }
+                }
+
+                return state;
+            }
+
+            exportData() {
+                const exportData = {
+                    systemParameters: {
+                        v: this.v,
+                        delta: this.delta,
+                        emergentTimeQuantum: this.emergentTimeQuantum
+                    },
+                    configuration: this.config,
+                    sessionData: this.sessionData,
+                    currentState: this.captureSystemState(),
+                    exportTimestamp: new Date().toISOString()
+                };
+
+                const blob = new Blob([JSON.stringify(exportData, null, 2)], 
+                    { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `recursive_nature_data_${Date.now()}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+
+                this.log("System data exported successfully");
+            }
+        }
+
+        /**
+         * GENERATOR CLASS
+         * Represents a single generator in the recursive hierarchy
+         */
+        class Generator {
+            constructor(name, value, maxValue, depth, x, y, angle, isPrimordial = false) {
+                this.name = name;
+                this.value = value;
+                this.maxValue = maxValue;
+                this.internalSum = 0; // Sum of sub-generators only
+                this.depth = depth;
+                this.x = x;
+                this.y = y;
+                this.angle = angle;
+                this.isPrimordial = isPrimordial;
+                
+                this.subGenerators = new Map();
+                this.subCounter = 0;
+                this.isActive = true;
+                this.age = 0;
+                this.lastGenerationTime = Date.now();
+                this.generationTime = 2000; // Will be calculated
+                
+                this.hasReachedEquilibrium = false;
+            }
+
+            calculateGenerationTime(baseQuantum, config) {
+                const baseTime = baseQuantum || config.baseTime;
+                
+                if (this.isPrimordial) {
+                    // Primordial generator uses delta ratio for timing
+                    const system = window.currentSystem;
+                    if (system && system.v > 0) {
+                        const deltaRatio = Math.abs(system.delta) / system.v;
+                        this.generationTime = baseTime * deltaRatio;
+                    } else {
+                        this.generationTime = baseTime;
+                    }
+                } else {
+                    // Sub-generators use proportional timing
+                    const timeRatio = this.parent ? Math.abs(this.value) / Math.abs(this.parent.value) : 1.0;
+                    this.generationTime = baseTime * timeRatio;
+                }
+                
+                // Bounds
+                this.generationTime = Math.max(100, Math.min(30000, this.generationTime));
+            }
+
+            update(system) {
+                if (!this.isActive || this.hasReachedEquilibrium) return;
+
+                this.age += 16; // ~60fps
+                const now = Date.now();
+
+                // Check for local equilibrium
+                this.checkLocalEquilibrium(system);
+                if (this.hasReachedEquilibrium) return;
+
+                // Time modulation based on distance from limit
+                let effectiveTime = this.generationTime;
+                if (system.config.timeModulation) {
+                    const distanceFromLimit = Math.abs(Math.abs(this.internalSum) - this.maxValue) / this.maxValue;
+                    const speedMultiplier = 0.2 + (distanceFromLimit * 0.8); // Faster when closer to limit
+                    effectiveTime = this.generationTime * speedMultiplier;
+                }
+
+                // Generate new sub-generator
+                if (now - this.lastGenerationTime > effectiveTime) {
+                    this.lastGenerationTime = now;
+                    
+                    // Generation probability based on current state
+                    const generationProbability = this.calculateGenerationProbability();
+                    
+                    if (Math.random() < generationProbability) {
+                        this.createSubGenerator(system);
+                    }
+                }
+
+                // Update sub-generators
+                for (const subGen of this.subGenerators.values()) {
+                    subGen.update(system);
+                }
+
+                // Local constraint enforcement
+                this.enforceLocalConstraints(system);
+            }
+
+            checkLocalEquilibrium(system) {
+                const epsilon = 1e-12;
+                
+                let checkValue;
+                if (this.isPrimordial) {
+                    // Primordial: check total system contribution
+                    checkValue = Math.abs(this.value + this.internalSum);
+                } else {
+                    // Others: check internal sum only
+                    checkValue = Math.abs(this.internalSum);
+                }
+
+                if (Math.abs(checkValue - this.maxValue) < epsilon && this.subGenerators.size > 0) {
+                    this.hasReachedEquilibrium = true;
+                    system.log(`Generator ${this.name} reached local equilibrium: ${checkValue.toFixed(10)} ≈ ${this.maxValue.toFixed(10)}`);
+                    
+                    // Mark for decay (will be handled by system)
+                    this.scheduleDecay(system);
+                }
+            }
+
+            calculateGenerationProbability() {
+                // Base probability
+                let probability = 0.4;
+                
+                // Reduce probability with sub-generator count
+                const countFactor = 1.0 / (1.0 + this.subGenerators.size * 0.1);
+                probability *= countFactor;
+                
+                // Increase probability when far from limit
+                const distanceFromLimit = Math.abs(Math.abs(this.internalSum) - this.maxValue) / this.maxValue;
+                const distanceFactor = 0.5 + (distanceFromLimit * 0.5);
+                probability *= distanceFactor;
+                
+                return Math.min(0.8, probability);
+            }
+
+            createSubGenerator(system) {
+                if (this.depth >= 20) return; // Reasonable depth limit for performance
+                
+                this.subCounter++;
+                const subName = `${this.name}.${this.subCounter}`;
+                
+                // Generate value within parent's range
+                const parentReference = Math.abs(this.value);
+                const minValue = parentReference * 0.01; // Minimum 1% of parent
+                let subValue = (Math.random() - 0.5) * 2 * parentReference;
+                
+                // Ensure minimum magnitude
+                if (Math.abs(subValue) < minValue) {
+                    subValue = Math.random() > 0.5 ? minValue : -minValue;
+                }
+                
+                // Calculate angle distribution
+                const angleSpread = 30 * Math.pow(0.85, this.depth);
+                const existingCount = this.subGenerators.size;
+                let angleOffset = 0;
+                
+                // Rigid angular distribution
+                switch (existingCount) {
+                    case 0: angleOffset = 0; break;
+                    case 1: angleOffset = -angleSpread; break;
+                    case 2: angleOffset = angleSpread; break;
+                    case 3: angleOffset = -angleSpread * 0.5; break;
+                    case 4: angleOffset = angleSpread * 0.5; break;
+                    default: angleOffset = (Math.random() - 0.5) * angleSpread * 2;
+                }
+                
+                const finalAngle = this.angle + angleOffset + (Math.random() - 0.5) * 2;
+                
+                // Create sub-generator
+                const subGen = new Generator(
+                    subName,
+                    subValue,
+                    Math.abs(subValue),
+                    this.depth + 1,
+                    this.x, // Will be updated during drawing
+                    this.y,
+                    finalAngle,
+                    false
+                );
+                
+                subGen.parent = this;
+                subGen.calculateGenerationTime(system.emergentTimeQuantum, system.config);
+                
+                // Check if addition would violate constraint
+                const newSum = this.internalSum + subValue;
+                const limit = this.isPrimordial ? 
+                    (this.maxValue - Math.abs(this.value)) : 
+                    this.maxValue;
+                
+                if (Math.abs(newSum) <= limit) {
+                    this.subGenerators.set(subName, subGen);
+                    this.internalSum += subValue;
+                    system.maxDepth = Math.max(system.maxDepth, subGen.depth);
+                    system.operations++;
+                    
+                    if (this.depth === 0 && Math.random() < 0.1) {
+                        system.log(`${this.name} created ${subName}: ${subValue.toFixed(3)}`);
+                    }
+                } else {
+                    // Remove random sub-generator to make space
+                    this.removeRandomSubGenerator(system);
+                }
+            }
+
+            enforceLocalConstraints(system) {
+                let limit = this.isPrimordial ? 
+                    (this.maxValue - Math.abs(this.value)) : 
+                    this.maxValue;
+                
+                while (Math.abs(this.internalSum) > limit && this.subGenerators.size > 0) {
+                    this.removeRandomSubGenerator(system);
+                }
+            }
+
+            removeRandomSubGenerator(system) {
+                if (this.subGenerators.size === 0) return;
+                
+                const keys = Array.from(this.subGenerators.keys());
+                const randomKey = keys[Math.floor(Math.random() * keys.length)];
+                const subGen = this.subGenerators.get(randomKey);
+                
+                this.internalSum -= subGen.getTotalValue();
+                subGen.terminate(system);
+                this.subGenerators.delete(randomKey);
+            }
+
+            getTotalValue() {
+                let total = this.value;
+                for (const subGen of this.subGenerators.values()) {
+                    total += subGen.getTotalValue();
+                }
+                return total;
+            }
+
+            scheduleDecay(system) {
+                // In pure model, equilibrium generators immediately cease activity
+                setTimeout(() => {
+                    this.terminate(system);
+                }, 1000); // Small delay for logging
+            }
+
+            terminate(system) {
+                this.isActive = false;
+                
+                // Terminate all sub-generators recursively
+                for (const subGen of this.subGenerators.values()) {
+                    subGen.terminate(system);
+                }
+                
+                this.subGenerators.clear();
+                
+                if (this.depth === 0) {
+                    system.log(`Generator ${this.name} terminated (equilibrium reached)`);
+                }
+            }
+        }
+
+        // Initialize and expose system globally for debugging
+        window.currentSystem = new RecursiveNatureSystem();
+        
+        // Auto-start for demonstration (remove for research use)
+        window.addEventListener('load', () => {
+            // Uncomment next line to auto-start
+            // window.currentSystem.start();
+        });
+    </script>
+</body>
+</html>
